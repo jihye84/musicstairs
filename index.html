@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="반음마다 30°씩 도는 붐웨커 색 3D 나선 계단. 계단을 누르거나 클래식 곡을 재생하면 음이 빛나요.">
+<script>
+/* 카카오톡·네이버·페이스북·인스타그램 등 인앱 브라우저에서 열리면 기본 브라우저로 다시 열기 */
+(function () {
+  var ua = navigator.userAgent || '';
+  var url = location.href;
+  var inApp = /KAKAOTALK|NAVER\(inapp|FBAN|FBAV|FB_IAB|Instagram|Line\/|DaumApps|everytimeApp|SamsungBrowser\/[^ ]+ \(.*inapp|wv\)/i.test(ua);
+  if (/KAKAOTALK/i.test(ua)) {
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+    return;
+  }
+  if (/Line\//i.test(ua) && url.indexOf('openExternalBrowser=1') < 0) {
+    location.href = url + (url.indexOf('?') < 0 ? '?' : '&') + 'openExternalBrowser=1';
+    return;
+  }
+  if (!inApp) return;
+  if (/Android/i.test(ua)) {
+    location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+    return;
+  }
+  // iOS 인앱 브라우저는 사파리로 강제로 넘길 수 없어서 안내를 띄웁니다
+  document.addEventListener('DOMContentLoaded', function () {
+    var box = document.createElement('div');
+    box.setAttribute('role', 'dialog');
+    box.style.cssText = 'position:fixed;inset:0;z-index:99;background:rgba(13,17,32,.94);color:#eef0f8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;font:15px/1.6 system-ui,sans-serif';
+    box.innerHTML = '<strong style="font-size:18px">사파리에서 열어 주세요</strong>' +
+      '<span>이 앱 안의 브라우저에서는 소리와 3D가 제대로 작동하지 않을 수 있어요.<br>오른쪽 아래(또는 위)의 ⋯ 메뉴에서 <b>Safari로 열기</b>를 눌러 주세요.</span>' +
+      '<button id="copyUrl" style="font:inherit;padding:10px 18px;border-radius:999px;border:0;background:#eef0f8;color:#0d1120">주소 복사</button>' +
+      '<button id="stayHere" style="font:inherit;background:none;border:0;color:#9aa3c0;text-decoration:underline">그냥 여기서 보기</button>';
+    document.body.appendChild(box);
+    document.getElementById('copyUrl').onclick = function () {
+      var b = this;
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(
+        function () { b.textContent = '복사했어요'; },
+        function () { prompt('주소를 복사하세요', url); });
+    };
+    document.getElementById('stayHere').onclick = function () { box.remove(); };
+  });
+})();
+</script>
+<title>붐웨커 나선 계단</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* Layout: full-bleed 3D stage, with a quiet title block top-left, a live note readout top-right, and a colour key + controls docked at the bottom. Single dark look by choice, so the 12 note colours glow. */
+  :root {
+    --bg: #0d1120;
+    --bg-2: #161c33;
+    --panel: rgba(13, 17, 32, 0.74);
+    --fg: #eef0f8;
+    --muted: #9aa3c0;
+    --line: rgba(220, 228, 255, 0.14);
+    --focus: #ffe600;
+    --display: "Gowun Batang", "Nanum Myeongjo", serif;
+    --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--body);
+    overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .top {
+    position: fixed; left: 0; right: 0;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    padding-inline: 16px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px;
+    pointer-events: none;
+  }
+  .intro { max-width: 30rem; min-width: 0; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 4.4vw, 40px); line-height: 1.1; margin: 0 0 8px; text-wrap: balance; }
+  .intro p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 34ch; }
+
+  .readout {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 16px; min-width: 200px; backdrop-filter: blur(8px);
+    display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center;
+  }
+  .swatch { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-2); box-shadow: 0 0 0 1px var(--line); transition: background .2s, box-shadow .2s; }
+  .solfa { font-family: var(--display); font-size: 28px; line-height: 1; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  .bottom {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding-inline: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    pointer-events: none;
+  }
+  .keys, .controls { pointer-events: auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; }
+  .key {
+    font: 500 13px/1 var(--body); color: #10131f;
+    background: var(--c); border: 0; border-radius: 999px;
+    min-width: 44px; height: 34px; padding: 0 10px; cursor: pointer;
+    box-shadow: inset 0 -3px 0 rgba(0,0,0,.18);
+    transition: transform .12s;
+  }
+  .key.light-text { color: #fff; }
+  .key:hover { transform: translateY(-2px); }
+  .controls { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px; backdrop-filter: blur(8px); }
+  .btn {
+    font: 500 13px/1 var(--body); color: var(--fg); background: transparent;
+    border: 0; border-radius: 999px; height: 34px; padding: 0 14px; cursor: pointer;
+  }
+  .btn:hover { background: var(--bg-2); }
+  .btn.primary { background: var(--fg); color: var(--bg); }
+  .btn[aria-pressed="false"] { color: var(--muted); }
+  .btn[aria-pressed="true"]::before { content: "● "; font-size: 9px; vertical-align: 2px; }
+  .key:focus-visible, .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .hint { font-size: 11px; color: var(--muted); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:disabled:hover { background: transparent; }
+  .songs { align-items: center; }
+  #songSel, #instSel {
+    font: 500 13px/1 var(--body); color: var(--fg); background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: 999px; height: 34px; padding: 0 12px; max-width: 100%;
+  }
+  #songSel:focus-visible, #instSel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .readout > div:last-child { min-width: 0; }
+  .meta { max-width: 34ch; word-break: keep-all; }
+  .vkey { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .vk { display: inline-flex; align-items: center; gap: 5px; }
+  .vk i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px rgba(255,255,255,.5); }
+  .tempo { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 0 10px; font-variant-numeric: tabular-nums; }
+  .tempo input { width: 96px; accent-color: var(--fg); }
+  .tempo output { min-width: 3.2em; color: var(--fg); }
+
+  @media (max-width: 640px) {
+    .intro p { display: none; }
+    .readout { min-width: 0; padding: 8px 12px; }
+    .swatch { width: 32px; height: 32px; }
+    .solfa { font-size: 22px; }
+    .key { min-width: 40px; height: 30px; font-size: 12px; padding: 0 8px; }
+    .btn { height: 30px; padding: 0 10px; font-size: 12px; }
+    .controls { border-radius: 16px; }
+    .hint { display: none; }
+    .tempo input { width: 72px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .key, .swatch { transition: none; } }
+</style>
+<style>html,body{margin:0}</style>
+</head>
+<body>
+
+
+<canvas id="stage" aria-label="12음 나선 계단 3D 장면"></canvas>
+
+<div class="top">
+  <div class="intro">
+    <p class="eyebrow">12 semitones · 30° per step</p>
+    <h1>붐웨커 나선 계단</h1>
+    <p>도2부터 도6까지, 반음 하나가 계단 한 칸, 열두 칸이 한 바퀴입니다. 한 옥타브 위의 같은 계이름은 360° 돌아 같은 색 계단 바로 위에 떠 있고, 실로폰 음판처럼 위로 갈수록 짧아집니다.</p>
+  </div>
+  <div class="readout" aria-live="polite">
+    <div class="swatch" id="swatch"></div>
+    <div>
+      <div class="solfa" id="solfa">계단을 눌러보세요</div>
+      <div class="meta" id="meta">드래그해서 돌려보기 · 휠로 확대</div>
+      <div class="vkey" id="vkey" hidden></div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom">
+  <div class="keys" id="keys" aria-label="계이름별로 모든 옥타브 듣기"></div>
+  <div class="controls">
+    <button class="btn primary" id="playChrom" type="button">▲ 반음계 오르기</button>
+    <button class="btn" id="playMajor" type="button">▲ 장음계 오르기</button>
+    <button class="btn" id="tTrail" type="button" aria-pressed="true">궤적</button>
+    <button class="btn" id="tLabels" type="button" aria-pressed="true">계이름</button>
+    <button class="btn" id="tSpin" type="button" aria-pressed="true">자동 회전</button>
+  </div>
+  <div class="controls songs" aria-label="곡 재생">
+    <select id="songSel" aria-label="곡 고르기">
+      <option value="bach">바흐 · 평균율 전주곡 C장조</option>
+      <option value="cello">바흐 · 무반주 첼로 모음곡 1번</option>
+      <option value="moonlight">베토벤 · 월광 1악장</option>
+      <option value="k545">모차르트 · 소나타 K.545</option>
+      <option value="satie">사티 · 짐노페디 1번</option>
+      <option value="elise">베토벤 · 엘리제를 위하여</option>
+    </select>
+    <select id="instSel" aria-label="악기 고르기">
+      <option value="auto">악기: 곡에 맞게</option>
+      <option value="xylo">실로폰</option>
+      <option value="piano">피아노</option>
+      <option value="strings">현악기</option>
+      <option value="organ">오르간</option>
+    </select>
+    <button class="btn primary" type="button" id="play">▶ 재생</button>
+    <button class="btn" type="button" id="stop" disabled>■ 정지</button>
+    <label class="tempo" for="tempo">빠르기 <input id="tempo" type="range" min="50" max="150" step="5" value="100"> <output id="tempoOut">100%</output></label>
+  </div>
+  <div class="hint">색깔 버튼을 누르면 그 계이름을 옥타브마다 차례로 울립니다</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const NAMES   = ['도','도♯','레','레♯','미','파','파♯','솔','솔♯','라','라♯','시'];
+  const LETTERS = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  // Boomwhacker-style chromatic colours
+  const COLORS  = ['#e8202a','#f2552b','#f7941d','#fdb913','#ffe600','#8dc63f',
+                   '#3dae49','#0b7a3e','#1ba9b5','#6a3d9a','#a33fa1','#e0338c'];
+  const DARK_TEXT_ON = [false,false,false,false,false,false,false,true,false,true,true,false];
+
+  const N = 49;               // C2 … C6
+  const MIDI0 = 36;           // C2
+  const RISE = 0.33;          // height per semitone
+  const R0 = 1.1;             // inner radius (open centre)
+  const L0 = 4.8;             // bar length of the lowest C
+  const THICK = 0.2;
+  const STEP = Math.PI / 6;   // 30°
+  const BAR_W = 0.56;         // bar width, same for every step
+  const BEVEL = 0.03;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const freqOf = i => 65.4064 * Math.pow(2, i / 12);            // C2 = 65.41 Hz
+  const octOf = i => 2 + Math.floor(i / 12);
+  const lenOf  = i => L0 * Math.pow(2, -i / 24);                 // xylophone bars: length ∝ 1/√f
+  const polar  = (r, a, y) => new THREE.Vector3(r * Math.cos(a), y, -r * Math.sin(a));
+
+  // ---------- scene ----------
+  const canvas = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1120);
+  scene.fog = new THREE.Fog(0x0d1120, 32, 75);
+
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+  const midY = (N - 1) * RISE / 2;
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.target.set(0, midY, 0);
+  controls.enableDamping = true;
+  controls.autoRotate = !reduceMotion;
+  controls.autoRotateSpeed = 0.7;
+  controls.minDistance = 6; controls.maxDistance = 45;
+  controls.maxPolarAngle = Math.PI * 0.62;
+
+  scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x1a1530, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(8, 20, 10); scene.add(sun);
+  const rim = new THREE.DirectionalLight(0x8899ff, 0.35);
+  rim.position.set(-10, 6, -8); scene.add(rim);
+
+  const lin = hex => new THREE.Color(hex).convertSRGBToLinear();
+
+  // floor dial with 12 coloured spokes
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(7, 72),
+    new THREE.MeshStandardMaterial({ color: lin('#141a2e'), roughness: 1 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; scene.add(floor);
+  for (let pc = 0; pc < 12; pc++) {
+    const g = new THREE.BufferGeometry().setFromPoints([polar(R0, pc * STEP, 0), polar(6.6, pc * STEP, 0)]);
+    scene.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: lin(COLORS[pc]), transparent: true, opacity: 0.35 })));
+  }
+
+  // ---------- steps ----------
+  const steps = [];
+  const nodeMat = new THREE.MeshStandardMaterial({ color: lin('#1a1a22'), roughness: 0.5 });
+  const nodeGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.02, 16);
+
+  for (let i = 0; i < N; i++) {
+    const pc = i % 12;
+    const L = lenOf(i);
+    // rectangular bar: constant width, length along the radius
+    const geo = new THREE.BoxGeometry(L, THICK + BEVEL, BAR_W);
+    geo.translate(R0 + L / 2, (THICK + BEVEL) / 2, 0);
+    const color = lin(COLORS[pc]);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.05, emissive: color, emissiveIntensity: 0.08 });
+    const mesh = new THREE.Mesh(geo, mat);
+    const baseY = i * RISE;
+    mesh.position.y = baseY;
+    mesh.rotation.y = i * STEP;
+    mesh.userData.index = i;
+    scene.add(mesh);
+
+    // xylophone support nodes at 22.4 % from each end
+    [0.224, 0.776].forEach(f => {
+      const n = new THREE.Mesh(nodeGeo, nodeMat);
+      n.position.set(R0 + L * f, THICK + BEVEL + 0.01, 0);
+      mesh.add(n);
+    });
+
+    steps.push({ i, pc, L, baseY, mesh, mat, glow: 0, hover: 0, label: null });
+  }
+
+  // same-note vertical threads
+  const threads = []; // same-note threads removed
+
+  // shrinking outer spiral (bar tips)
+  const tips = [];
+  for (let t = 0; t <= (N - 1) * 8; t++) {
+    const x = t / 8;
+    tips.push(polar(R0 + L0 * Math.pow(2, -x / 24) + 0.05, x * STEP, x * RISE + THICK + BEVEL));
+  }
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tips),
+    new THREE.LineBasicMaterial({ color: 0xdfe4ff, transparent: true, opacity: 0.22 })));
+
+  // labels
+  function makeLabel(s) {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+    const x = c.getContext('2d');
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = '700 64px "IBM Plex Sans KR", "Apple SD Gothic Neo", sans-serif';
+    x.lineWidth = 10; x.strokeStyle = 'rgba(13,17,32,0.85)'; x.fillStyle = '#ffffff';
+    const txt = NAMES[s.pc];
+    x.strokeText(txt, 112, 64); x.fillText(txt, 112, 64);
+    const w = x.measureText(txt).width;
+    x.font = '500 34px "IBM Plex Sans KR", sans-serif';
+    x.fillStyle = '#c9cfe6';
+    x.strokeText(String(octOf(s.i)), 112 + w / 2 + 18, 84);
+    x.fillText(String(octOf(s.i)), 112 + w / 2 + 18, 84);
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(0.9, 0.45, 1);
+    sp.position.set(R0 + s.L + 0.45, THICK + 0.18, 0);
+    s.mesh.add(sp); s.label = sp;
+  }
+  const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  Promise.race([fontsReady, new Promise(r => setTimeout(r, 1500))]).then(() => steps.forEach(makeLabel));
+
+  // marbles: one per voice, each landing on its own spot along the bar
+  const MARBLE_COLS = [0xffffff, 0xffe2a0, 0xbfe4ff, 0xffc0dc];
+  const MARBLE_AT = [0.5, 0.28, 0.72, 0.9];
+  const sphereGeo = new THREE.SphereGeometry(0.17, 24, 16);
+  const marbles = MARBLE_COLS.map(c => {
+    const m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.6 }));
+    const l = new THREE.PointLight(0xffffff, 1.0, 4);
+    m.add(l); m.visible = false; scene.add(m);
+    return { m, l, hop: null };
+  });
+  const topOf = (s, v) => polar(R0 + s.L * MARBLE_AT[v || 0], s.i * STEP, s.baseY + THICK + BEVEL + 0.17);
+  function hopTo(s, d, v) {
+    const M = marbles[v || 0], to = topOf(s, v);
+    if (!M.m.visible) { M.m.visible = true; M.m.position.copy(to); }
+    M.hop = { from: M.m.position.clone(), to, t: 0, dur: reduceMotion ? 0.01 : (d || 0.22) };
+    M.l.color.set(COLORS[s.pc]);
+  }
+  function hideMarbles() { marbles.forEach(M => { M.m.visible = false; M.hop = null; }); }
+
+  // ---------- marble trail: connect hops until a step is revisited, then close the figure ----------
+  const UP = new THREE.Vector3(0, 1, 0);
+  const segBase = new THREE.CylinderGeometry(0.04, 0.04, 1, 10, 1, true);
+  const jointBase = new THREE.SphereGeometry(0.06, 12, 8);
+  const MAX_PTS = 24;
+  const trails = []; let trailOn = true;
+  const fading = [];
+  function newTrail() {
+    const g = new THREE.Group(); scene.add(g);
+    return { g, pts: [], idxs: [], life: 1, flash: 0 };
+  }
+  function addJoint(t, p, col) {
+    const m = new THREE.Mesh(jointBase, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9 }));
+    m.position.copy(p); t.g.add(m);
+  }
+  function addSeg(t, a, b, ca, cb) {
+    const d = b.clone().sub(a), len = d.length();
+    if (len < 1e-4) return;
+    const geo = segBase.clone();
+    const pos = geo.attributes.position, cols = new Float32Array(pos.count * 3);
+    for (let v = 0; v < pos.count; v++) {
+      const c = pos.getY(v) > 0 ? cb : ca;
+      cols[v * 3] = c.r; cols[v * 3 + 1] = c.g; cols[v * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+    m.scale.set(1, len, 1);
+    m.position.copy(a).addScaledVector(d, 0.5);
+    m.quaternion.setFromUnitVectors(UP, d.normalize());
+    t.g.add(m);
+  }
+  function retire(t, closed) {
+    if (!t || t.pts.length < 2) { if (t) disposeTrail(t); return; }
+    t.life = 1; t.flash = closed ? 1 : 0; t.closed = closed;
+    fading.push(t);
+  }
+  function disposeTrail(t) {
+    scene.remove(t.g);
+    t.g.children.forEach(c => { if (c.geometry !== jointBase) c.geometry.dispose(); c.material.dispose(); });
+  }
+  function clearTrails() {
+    trails.forEach(t => t && disposeTrail(t));
+    trails.length = 0;
+    fading.splice(0).forEach(disposeTrail);
+  }
+  function trailAdd(i, v) {
+    if (!trailOn) return;
+    v = v || 0;
+    const s = steps[i], p = topOf(s, v), col = lin(COLORS[s.pc]);
+    let trail = trails[v] || (trails[v] = newTrail());
+    const seen = trail.idxs.includes(i);
+    const n = trail.pts.length;
+    if (n) addSeg(trail, trail.pts[n - 1], p, trail.cols[n - 1], col);
+    if (!seen) addJoint(trail, p, col);
+    trail.pts.push(p); trail.idxs.push(i);
+    (trail.cols = trail.cols || []).push(col);
+    if (seen || trail.pts.length >= MAX_PTS) {
+      retire(trail, seen);
+      trail = trails[v] = newTrail();
+      trail.pts.push(p); trail.idxs.push(i); trail.cols = [col];
+      addJoint(trail, p, col);
+    }
+  }
+  function updateTrails(dt) {
+    for (let k = fading.length - 1; k >= 0; k--) {
+      const t = fading[k];
+      t.flash = Math.max(0, t.flash - dt * 2.5);
+      t.life -= dt / (t.closed ? 2.6 : 1.4);
+      if (t.life <= 0) { disposeTrail(t); fading.splice(k, 1); continue; }
+      const op = Math.min(1, 0.9 * t.life + t.flash * 0.3);
+      const sc = 1 + t.flash * 0.8;
+      t.g.children.forEach(c => {
+        c.material.opacity = op;
+        if (c.geometry === jointBase) c.scale.setScalar(sc);
+        else c.scale.x = c.scale.z = sc;
+      });
+    }
+  }
+
+  // ---------- sound ----------
+  let ac = null, master = null;
+  function audio() {
+    if (!ac) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ac = new AC();
+      master = ac.createDynamicsCompressor();
+      master.connect(ac.destination);
+    }
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  // sustained voices: the note holds for its written length, then releases
+  function strings(f, when, dur, vol) {
+    const a = audio(); if (!a) return;
+    const t = Math.max(when || 0, a.currentTime);
+    const len = Math.max(0.12, dur || 0.6);
+    const atk = Math.min(0.09, len * 0.35), rel = 0.28;
+    const peak = 0.075 * (vol ? vol / 0.24 : 1) * (f < 160 ? 1.35 : 1);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + atk);
+    g.gain.setValueAtTime(peak * 0.85, t + Math.max(atk, len - 0.02));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len + rel);
+    const lp = a.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 0.6;
+    lp.frequency.setValueAtTime(Math.min(f * 3, 3500), t);
+    lp.frequency.linearRampToValueAtTime(Math.min(f * 6, 6000), t + atk);
+    lp.connect(g); g.connect(master);
+    const lfo = a.createOscillator(), lfoG = a.createGain();
+    lfo.frequency.value = 5.3;
+    lfoG.gain.setValueAtTime(0, t);
+    lfoG.gain.linearRampToValueAtTime(f * 0.0045, t + Math.min(0.35, len));
+    lfo.connect(lfoG);
+    const oscs = [-7, 6].map(cents => {
+      const o = a.createOscillator();
+      o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = cents;
+      lfoG.connect(o.frequency); o.connect(lp); return o;
+    });
+    [lfo, ...oscs].forEach(o => { o.start(t); o.stop(t + len + rel + 0.05); });
+  }
+  function organ(f, when, dur, vol) {
+    const a = audio(); if (!a) return;
+    const t = Math.max(when || 0, a.currentTime);
+    const len = Math.max(0.12, dur || 0.6), rel = 0.18;
+    const peak = 0.11 * (vol ? vol / 0.24 : 1);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.03);
+    g.gain.setValueAtTime(peak, t + Math.max(0.03, len - 0.02));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len + rel);
+    g.connect(master);
+    [[1, 1], [2, 0.5], [3, 0.22], [4, 0.18]].forEach(([h, amp]) => {
+      if (f * h > 9000) return;
+      const o = a.createOscillator(), og = a.createGain();
+      o.type = 'sine'; o.frequency.value = f * h; og.gain.value = amp;
+      o.connect(og); og.connect(g);
+      o.start(t); o.stop(t + len + rel + 0.05);
+    });
+  }
+  // piano: slightly stretched partials (string stiffness), each decaying on its own clock,
+  // a short hammer thump, and a damper that cuts the note when its written length ends
+  let noiseBuf = null;
+  function piano(f, when, dur, vol) {
+    const a = audio(); if (!a) return;
+    const t = Math.max(when || 0, a.currentTime);
+    const len = Math.max(0.1, dur || 0.6);
+    const ring = Math.min(6, Math.max(0.9, 3.2 * Math.sqrt(261.6 / f)));
+    const end = t + Math.min(len, ring * 1.5) + 0.5;
+    const peak = 0.16 * (vol ? vol / 0.24 : 1) * (f < 130 ? 1.25 : 1);
+    const out = a.createGain();
+    out.gain.setValueAtTime(1, t);
+    out.gain.setTargetAtTime(0, t + len, 0.09);
+    const lp = a.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 0.5;
+    lp.frequency.setValueAtTime(Math.min(f * 9, 9000), t);
+    lp.frequency.setTargetAtTime(Math.min(f * 3, 4000), t + 0.01, ring * 0.35);
+    lp.connect(out); out.connect(master);
+    const B = 0.00035;
+    [1, 0.55, 0.32, 0.2, 0.12, 0.07].forEach((amp, k) => {
+      const h = k + 1, fh = f * h * Math.sqrt(1 + B * h * h);
+      if (fh > 10000) return;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine'; o.frequency.value = fh;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(peak * amp, t + 0.004);
+      g.gain.setTargetAtTime(0, t + 0.006, ring / Math.pow(h, 0.7) * 0.45);
+      o.connect(g); g.connect(lp);
+      o.start(t); o.stop(end);
+    });
+    if (!noiseBuf) {
+      noiseBuf = a.createBuffer(1, Math.floor(a.sampleRate * 0.05), a.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let k = 0; k < d.length; k++) d[k] = (Math.random() * 2 - 1) * (1 - k / d.length);
+    }
+    const n = a.createBufferSource(), bp = a.createBiquadFilter(), ng = a.createGain();
+    n.buffer = noiseBuf; bp.type = 'bandpass'; bp.frequency.value = Math.min(f * 3, 5000); bp.Q.value = 1.2;
+    ng.gain.value = peak * 0.25;
+    n.connect(bp); bp.connect(ng); ng.connect(out);
+    n.start(t);
+  }
+  const instSel = document.getElementById('instSel');
+  function play(f, when, dur, vol, inst) {
+    if (inst === 'strings') return strings(f, when, dur, vol);
+    if (inst === 'organ') return organ(f, when, dur, vol);
+    if (inst === 'piano') return piano(f, when, dur, vol);
+    return tone(f, when, dur, vol);
+  }
+  const manualInst = () => (instSel.value === 'auto' ? 'xylo' : instSel.value);
+
+  function tone(f, when, dur, vol) {
+    const a = audio(); if (!a) return;
+    const t = Math.max(when || 0, a.currentTime);
+    const ring = Math.min(3.2, Math.max(0.7, (dur || 1) * 1.3));
+    const peak = vol || 0.32;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + ring);
+    g.connect(master);
+    const o1 = a.createOscillator(); o1.type = 'sine'; o1.frequency.value = f; o1.connect(g);
+    const g2 = a.createGain();
+    g2.gain.setValueAtTime(0.12, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    g2.connect(g);
+    const o2 = a.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 4; o2.connect(g2);
+    [o1, o2].forEach(o => { o.start(t); o.stop(t + ring + 0.1); });
+  }
+
+  // ---------- trigger ----------
+  const swatch = document.getElementById('swatch');
+  const solfa = document.getElementById('solfa');
+  const meta = document.getElementById('meta');
+  function light(i, extra, hopDur, v) {
+    const s = steps[i];
+    s.glow = 1;
+    hopTo(s, hopDur, v);
+    trailAdd(i, v);
+    swatch.style.background = COLORS[s.pc];
+    swatch.style.boxShadow = '0 0 22px ' + COLORS[s.pc];
+    solfa.textContent = NAMES[s.pc];
+    meta.textContent = extra || (LETTERS[s.pc] + octOf(i) + ' · ' + freqOf(i).toFixed(1) + ' Hz · ' + ((i * 30) % 360) + '° · ' + (i + 1) + '번째 계단');
+  }
+  function trigger(i) { play(freqOf(i), 0, 0.7, 0.3, manualInst()); light(i); }
+
+  let timers = [];
+  function playSeq(list, gap) {
+    stopSong();
+    clearTrails();
+    timers.forEach(clearTimeout); timers = [];
+    list.forEach((i, k) => timers.push(setTimeout(() => trigger(i), k * gap)));
+  }
+
+  // ---------- songs ----------
+  const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const midi = s => { const r = /^([A-G])(#|b)?(\d)$/.exec(s); return (+r[3] + 1) * 12 + PC[r[1]] + (r[2] === '#' ? 1 : r[2] === 'b' ? -1 : 0); };
+  const notes = str => str.trim().split(/\s+/).map(midi);
+
+  function buildBach() {
+    // BWV 846: each bar is one five-note chord, broken twice: n1 n2 n3 n4 n5 n3 n4 n5
+    const CH = [
+      'C4 E4 G4 C5 E5','C4 D4 A4 D5 F5','B3 D4 G4 D5 F5','C4 E4 G4 C5 E5',
+      'C4 E4 A4 E5 A5','C4 D4 F#4 A4 D5','B3 D4 G4 D5 G5','B3 C4 E4 G4 C5',
+      'A3 C4 E4 G4 C5','D3 A3 D4 F#4 C5','G3 B3 D4 G4 B4','G3 Bb3 E4 G4 C#5',
+      'F3 A3 D4 A4 D5','F3 Ab3 D4 F4 B4','E3 G3 C4 G4 C5','E3 F3 A3 C4 F4',
+      'D3 F3 A3 C4 F4','G2 D3 G3 B3 F4','C3 E3 G3 C4 E4','C3 G3 Bb3 C4 E4',
+      'F2 F3 A3 C4 E4','F#2 C3 A3 C4 Eb4','Ab2 F3 B3 C4 D4','G2 F3 G3 B3 D4',
+      'G2 E3 G3 C4 E4','G2 D3 G3 C4 F4','G2 D3 G3 B3 F4','G2 Eb3 A3 C4 F#4',
+      'G2 E3 G3 C4 G4','G2 D3 G3 C4 F4','G2 D3 G3 B3 F4','C2 C3 G3 Bb3 E4'
+    ];
+    const ev = []; let t = 0;
+    CH.forEach((c, k) => {
+      const n = notes(c), bar = k + 1;
+      for (let h = 0; h < 2; h++) {
+        const b = t + h * 8;
+        ev.push({ t: b, n: n[0], d: 8, bar });
+        ev.push({ t: b + 1, n: n[1], d: 7, bar });
+        [2, 3, 4, 2, 3, 4].forEach((j, q) => ev.push({ t: b + 2 + q, n: n[j], d: 1, bar }));
+      }
+      t += 16;
+    });
+    [['C2', 'C3', 'F3 A3 C4 F4 C4 A3 C4 A3 F3 A3 F3 D3 F3 D3', 33],
+     ['C2', 'B2', 'G4 B4 D5 F5 D5 B4 D5 B4 G4 B4 D4 F4 E4 D4', 34]].forEach(([a, b, run, bar]) => {
+      ev.push({ t, n: midi(a), d: 16, bar });
+      ev.push({ t: t + 1, n: midi(b), d: 15, bar });
+      notes(run).forEach((n, q) => ev.push({ t: t + 2 + q, n, d: 1, bar }));
+      t += 16;
+    });
+    notes('C2 C3 E4 G4 C5').forEach((n, q) => ev.push({ t: t + q * 0.12, n, d: 16, bar: 35 }));
+    return { ev, len: t + 16, bpm: 66, bars: 35,
+      title: '바흐 · 평균율 1권 전주곡 C장조 BWV 846' };
+  }
+
+  function buildElise() {
+    // Für Elise, WoO 59 — opening section (bars 1–8), played twice; time unit = 16th note
+    const ev = [];
+    const mel = (t, s, bar, d) => notes(s).forEach((n, q) => ev.push({ t: t + q, n, d: d || 1, bar }));
+    const arp = (t, rh, lh, bar) => {
+      const [b0, b1, b2] = notes(lh), r = notes(rh);
+      ev.push({ t, n: r[0], d: 2, bar }); ev.push({ t, n: b0, d: 6, bar, v: 1 });
+      ev.push({ t: t + 1, n: b1, d: 5, bar, v: 1 }); ev.push({ t: t + 2, n: b2, d: 4, bar, v: 1 });
+      r.slice(1).forEach((n, q) => ev.push({ t: t + 3 + q, n, d: 1, bar }));
+    };
+    let t = 0, bar = 0;
+    const A = pick => {
+      mel(t, 'E5 D#5 E5 B4 D5 C5', ++bar); t += 6;
+      arp(t, 'A4 C4 E4 A4', 'A2 E3 A3', ++bar); t += 6;
+      arp(t, 'B4 E4 G#4 B4', 'E2 E3 G#3', ++bar); t += 6;
+      arp(t, 'C5 E4 E5 D#5', 'A2 E3 A3', ++bar); t += 6;
+      mel(t, 'E5 D#5 E5 B4 D5 C5', ++bar); t += 6;
+      arp(t, 'A4 C4 E4 A4', 'A2 E3 A3', ++bar); t += 6;
+      arp(t, 'B4 E4 C5 B4', 'E2 E3 G#3', ++bar); t += 6;
+      arp(t, 'A4', 'A2 E3 A3', ++bar);
+      if (pick) mel(t + 6 - pick.split(' ').length, pick, bar);
+      t += 6;
+    };
+    mel(t, 'E5 D#5', 0); t += 2;
+    A('E5 D#5');            // A
+    A('B4 C5 D5');          // A again, leading into B
+    arp(t, 'E5 G4 F5 E5', 'C3 G3 C4', ++bar); t += 6;   // B
+    arp(t, 'D5 F4 E5 D5', 'G2 G3 B3', ++bar); t += 6;
+    arp(t, 'C5 E4 D5 C5', 'A2 E3 A3', ++bar); t += 6;
+    arp(t, 'B4 E4 E5 D#5', 'E2 E3 G#3', ++bar); t += 6;
+    A(null);                // A, ending
+    return { ev, len: t, bpm: 160, bars: 28, unitPerBeat: 2,
+      inst: 'piano', title: '베토벤 · 엘리제를 위하여 WoO 59 (A–A–B–A)', voices: ['오른손', '왼손'] };
+  }
+
+  // "C4:2 E4+G4:4 r:1" → events for one voice; unit-length tokens may omit ":1"
+  function line(ev, v, t, spec) {
+    spec.trim().split(/\s+/).forEach(tok => {
+      const [n, d] = tok.split(':'), dur = d === undefined ? 1 : +d;
+      if (n !== 'r') n.split('+').forEach((x, k) => ev.push({ t: t + k * 0.04, n: midi(x), d: dur, v }));
+      t += dur;
+    });
+    return t;
+  }
+  const times = (str, k) => Array(k).fill(str).join(' ');
+
+  function buildCello() {
+    // Bach, Cello Suite No. 1 in G, BWV 1007 — Prélude bars 1–4, twice (unit = 16th)
+    const ev = [];
+    const B = [
+      'G2 D3 B3 A3 B3 D3 B3 D3 G2 D3 B3 A3 B3 D3 B3 D3',
+      'G2 E3 C4 B3 C4 E3 C4 E3 G2 E3 C4 B3 C4 E3 C4 E3',
+      'G2 F#3 C4 B3 C4 F#3 C4 F#3 G2 F#3 C4 B3 C4 F#3 C4 F#3',
+      'G2 G3 B3 A3 B3 G3 B3 G3 G2 G3 B3 A3 B3 G3 B3 F#3',
+      'G2 E3 B3 A3 B3 G3 F#3 G3 E3 G3 F#3 G3 B2 D3 C#3 B2',
+      'C#3 G3 A3 G3 A3 G3 A3 G3 C#3 G3 A3 G3 A3 G3 A3 G3',
+      'D3 F#3 D4 C#4 D4 A3 G3 A3 F#3 A3 G3 A3 D3 F#3 E3 D3',
+      'E2 B2 G3 F#3 G3 B2 G3 B2 E2 B2 G3 F#3 G3 B2 G3 B2'];
+    let t = 0;
+    for (let r = 0; r < 2; r++) B.forEach(b => { t = line(ev, 0, t, b); });
+    line(ev, 0, t, 'G2+D3+B3+G4:16');
+    return { ev, len: t + 16, bpm: 76, barLen: 16, bars: 17,
+      inst: 'strings', title: '바흐 · 무반주 첼로 모음곡 1번 프렐류드 BWV 1007 (1–8마디 ×2)', voices: ['첼로'] };
+  }
+
+  function buildMoonlight() {
+    // Beethoven, Sonata Op. 27 No. 2 "Moonlight", I — bars 1–4 + closing chord (unit = triplet 8th)
+    const ev = [];
+    const g = 'G#3 C#4 E4';
+    const RH = [times(g, 4), times(g, 4), times('A3 C#4 E4', 2), times('A3 D4 F#4', 2),
+      'G#3 C4 F#4 G#3 C#4 E4 G#3 C#4 D#4 F#3 C4 D#4'].join(' ');
+    const LH = 'C#2+C#3:12 B1+B2:12 A1+A2:6 F#1+F#2:6 G#1+G#2:12';
+    line(ev, 0, 0, RH); line(ev, 1, 0, LH);
+    line(ev, 0, 48, RH); line(ev, 1, 48, LH);
+    line(ev, 0, 96, 'G#3+C#4+E4:12'); line(ev, 1, 96, 'C#2+C#3:12');
+    return { ev, len: 108, bpm: 54, unitPerBeat: 3, barLen: 12, bars: 9,
+      inst: 'piano', title: '베토벤 · 월광 소나타 1악장 (1–4마디 ×2)', voices: ['셋잇단 꺾임음', '베이스 옥타브'] };
+  }
+
+  function buildK545() {
+    // Mozart, Sonata in C K. 545, I — bars 1–4, twice (unit = 16th)
+    const ev = [];
+    const RH = 'C5:8 E5:4 G5:4 B4:6 C5 D5 C5:8 A5:8 G5:4 C6:4 G5:4 F5 E5 F5:2 E5:8';
+    const LH = ['C4 G4 E4 G4 C4 G4 E4 G4', 'D4 G4 F4 G4 C4 G4 E4 G4',
+                'C4 A4 F4 A4 C4 G4 E4 G4', 'B3 G4 D4 G4 C4 G4 E4 G4']
+               .map(b => b.split(' ').map(n => n + ':2').join(' ')).join(' ');
+    for (let r = 0; r < 4; r++) { line(ev, 0, 64 * r, RH); line(ev, 1, 64 * r, LH); }
+    line(ev, 0, 256, 'C4+E4+G4+C5:16');
+    return { ev, len: 272, bpm: 120, barLen: 16, bars: 17,
+      inst: 'piano', title: '모차르트 · 피아노 소나타 16번 K.545 1악장 (1–4마디 ×4)', voices: ['오른손 선율', '알베르티 베이스'] };
+  }
+
+  function buildSatie() {
+    // Satie, Gymnopédie No. 1 — bars 1–12 (unit = quarter, 3/4)
+    const ev = [];
+    let t = 0;
+    for (let b = 0; b < 24; b++) t = line(ev, 1, t, b % 2 ? 'D2 A3+C#4+F#4:2' : 'G2 B3+D4+F#4:2');
+    line(ev, 0, 12, 'r F#5 A5 G5 F#5 C#5 B4 C#5 D5 A4:3 F#4:12');
+    line(ev, 0, 48, 'r F#5 A5 G5 F#5 C#5 B4 C#5 D5 A4:3 F#4:12');
+    return { ev, len: 74, bpm: 72, unitPerBeat: 1, barLen: 3, bars: 24,
+      inst: 'piano', title: '사티 · 짐노페디 1번 (1–12마디 ×2)', voices: ['선율', '왼손 반주'] };
+  }
+
+  const SONGS = { bach: buildBach(), cello: buildCello(), moonlight: buildMoonlight(),
+                  k545: buildK545(), satie: buildSatie(), elise: buildElise() };
+  SONGS.bach.voices = ['한 줄로 이어지는 꺾임음'];
+  Object.values(SONGS).forEach(S => S.ev.sort((a, b) => a.t - b.t));
+  const vkey = document.getElementById('vkey');
+  function showVoices(S) {
+    vkey.innerHTML = '';
+    if (!S) { vkey.hidden = true; return; }
+    (S.voices || []).forEach((name, v) => {
+      const d = document.createElement('span');
+      d.className = 'vk';
+      d.innerHTML = '<i style="background:#' + MARBLE_COLS[v].toString(16).padStart(6, '0') + '"></i>';
+      d.appendChild(document.createTextNode(name));
+      vkey.appendChild(d);
+    });
+    vkey.hidden = false;
+  }
+
+  const tempoEl = document.getElementById('tempo');
+  const tempoOut = document.getElementById('tempoOut');
+  let song = null, visQ = [];
+  const unitSec = S => 60 / (S.bpm * (+tempoEl.value / 100)) / (S.unitPerBeat || 4);
+  const stairOf = n => { let i = n - MIDI0; while (i < 0) i += 12; while (i >= N) i -= 12; return i; };
+
+  function startSong(key) {
+    const a = audio(); if (!a) return;
+    timers.forEach(clearTimeout); timers = [];
+    visQ = [];
+    const S = SONGS[key];
+    clearTrails(); hideMarbles(); showVoices(S);
+    song = { key, S, idx: 0, unit: unitSec(S), t0: a.currentTime + 0.2 };
+    document.getElementById('stop').disabled = false;
+  }
+  function stopSong() {
+    song = null; visQ = [];
+    if (typeof vkey !== 'undefined' && vkey) showVoices(null);
+    const st = document.getElementById('stop'); if (st) st.disabled = true;
+  }
+  function pump() {
+    if (!song || !ac) return;
+    const horizon = ac.currentTime + 0.15, S = song.S;
+    while (song.idx < S.ev.length) {
+      const e = S.ev[song.idx];
+      const when = song.t0 + e.t * song.unit;
+      if (when > horizon) break;
+      const dense = e.d <= 1;
+      const inst = instSel.value === 'auto' ? (S.inst || 'xylo') : instSel.value;
+      play(440 * Math.pow(2, (e.n - 69) / 12), when, e.d * song.unit, dense ? 0.2 : 0.24, inst);
+      visQ.push({ when, e });
+      song.idx++;
+    }
+    if (song.idx >= S.ev.length && ac.currentTime > song.t0 + S.len * song.unit + 1) stopSong();
+  }
+  setInterval(pump, 25);
+
+  function drainVisuals() {
+    if (!ac || !visQ.length) return;
+    const now = ac.currentTime;
+    while (visQ.length && visQ[0].when <= now) {
+      const { e } = visQ.shift();
+      if (!song) break;
+      const i = stairOf(e.n), pc = e.n % 12;
+      const name = LETTERS[pc] + (Math.floor(e.n / 12) - 1);
+      const S = song.S;
+      const bar = e.bar !== undefined ? e.bar : Math.floor(e.t / (S.barLen || 16)) + 1;
+      light(i, S.title + ' · ' + (bar ? bar + '/' + S.bars + '마디 · ' : '') + name,
+            Math.min(0.2, song.unit * 0.9), e.v || 0);
+    }
+  }
+
+  document.getElementById('play').addEventListener('click', () => startSong(document.getElementById('songSel').value));
+  document.getElementById('stop').addEventListener('click', stopSong);
+  tempoEl.addEventListener('input', () => {
+    tempoOut.textContent = tempoEl.value + '%';
+    if (song && ac) {
+      const now = ac.currentTime, pos = (now - song.t0) / song.unit;
+      song.unit = unitSec(song.S);
+      song.t0 = now - pos * song.unit;
+    }
+  });
+  const chromatic = steps.map(s => s.i);
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+  const major = steps.filter(s => MAJOR.includes(s.pc)).map(s => s.i);
+
+  document.getElementById('playChrom').addEventListener('click', () => playSeq(chromatic, 190));
+  document.getElementById('playMajor').addEventListener('click', () => playSeq(major, 260));
+
+  const keys = document.getElementById('keys');
+  NAMES.forEach((n, pc) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'key' + (DARK_TEXT_ON[pc] ? ' light-text' : '');
+    b.id = 'key-' + pc;
+    b.style.setProperty('--c', COLORS[pc]);
+    b.textContent = n;
+    b.setAttribute('aria-label', n + ' (' + LETTERS[pc] + ') 모든 옥타브 듣기');
+    b.addEventListener('click', () => playSeq(steps.filter(s => s.pc === pc).map(s => s.i), 300));
+    keys.appendChild(b);
+  });
+
+  function toggle(id, apply) {
+    const b = document.getElementById(id);
+    b.addEventListener('click', () => {
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', String(on)); apply(on);
+    });
+  }
+  toggle('tTrail', on => { trailOn = on; if (!on) clearTrails(); });
+  toggle('tLabels', on => steps.forEach(s => s.label && (s.label.visible = on)));
+  const spinBtn = document.getElementById('tSpin');
+  spinBtn.setAttribute('aria-pressed', String(controls.autoRotate));
+  toggle('tSpin', on => controls.autoRotate = on);
+
+  // ---------- picking ----------
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  const meshes = steps.map(s => s.mesh);
+  function pick(e) {
+    const r = canvas.getBoundingClientRect();
+    ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ptr, camera);
+    const hit = ray.intersectObjects(meshes, false)[0];
+    return hit ? hit.object.userData.index : -1;
+  }
+  let down = null, hovered = -1;
+  canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerup', e => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) {
+      const i = pick(e); if (i >= 0) { timers.forEach(clearTimeout); if (song) { play(freqOf(i), 0, 0.7, 0.3, manualInst()); steps[i].glow = 1; } else trigger(i); }
+    }
+    down = null;
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    hovered = pick(e);
+    canvas.style.cursor = hovered >= 0 ? 'pointer' : 'grab';
+  });
+  canvas.addEventListener('pointerleave', () => { hovered = -1; });
+
+  // ---------- layout ----------
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  const dist = camera.aspect < 0.8 ? 36 : 25;
+  camera.position.set(dist * 0.72, midY + dist * 0.42, dist * 0.62);
+  controls.update();
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock();
+  function frame() {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    drainVisuals();
+    updateTrails(dt);
+    steps.forEach(s => {
+      s.glow = Math.max(0, s.glow - dt * 1.6);
+      const target = s.i === hovered ? 1 : 0;
+      s.hover += (target - s.hover) * Math.min(1, dt * 12);
+      s.mat.emissiveIntensity = 0.08 + s.glow * 0.85 + s.hover * 0.22;
+      s.mesh.position.y = s.baseY + s.glow * s.glow * 0.1;
+    });
+    threads.forEach(t => {
+      t.userData.pulse = Math.max(0, t.userData.pulse - dt * 1.2);
+      t.material.opacity = t.userData.base + t.userData.pulse * 0.55;
+    });
+    for (const M of marbles) {
+      const hop = M.hop; if (!hop) continue;
+      hop.t += dt / hop.dur;
+      const k = Math.min(1, hop.t);
+      M.m.position.lerpVectors(hop.from, hop.to, k);
+      M.m.position.y += Math.sin(Math.PI * k) * 0.45;
+      if (k >= 1) M.hop = null;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+</script>
+
+</body>
+</html>
