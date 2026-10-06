@@ -286,7 +286,7 @@
   </div>
   </div>
   <div class="controls songs" aria-label="곡 재생">
-    <select id="songSel" aria-label="곡 고르기">
+    <select id="songSel" aria-label="곡 고르기" autocomplete="off">
       <optgroup label="바흐">
         <option value="bach">평균율 1권 전주곡 C장조</option>
         <option value="bwv847">평균율 1권 전주곡과 푸가 C단조</option>
@@ -306,7 +306,7 @@
         <option value="satie">짐노페디 1번</option>
       </optgroup>
     </select>
-    <select id="instSel" aria-label="악기 고르기">
+    <select id="instSel" aria-label="악기 고르기" autocomplete="off">
       <option value="auto">악기: 곡에 맞게</option>
       <option value="xylo">실로폰</option>
       <option value="piano">피아노</option>
@@ -731,6 +731,9 @@
     n.start(t);
   }
   const instSel = document.getElementById('instSel');
+  // the app opens on the xylophone; picking a piece switches back to "suits the piece"
+  instSel.value = 'xylo';
+  document.getElementById('songSel').addEventListener('change', () => { instSel.value = 'auto'; });
   function play(f, when, dur, vol, inst) {
     if (inst === 'strings') return strings(f, when, dur, vol);
     if (inst === 'organ') return organ(f, when, dur, vol);
